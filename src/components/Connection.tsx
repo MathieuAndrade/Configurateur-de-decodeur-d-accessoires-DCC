@@ -33,6 +33,12 @@ function Connection({ setIsConnected, port }: ConnectionProps) {
 
 				// Then open and get configuration
 				await port.open();
+
+				// Opening the serial port toggles DTR on most platforms (notably Linux),
+				// which resets Arduino-style boards. Wait for the board to finish
+				// rebooting before talking to it, otherwise the command is lost.
+				await new Promise((resolve) => setTimeout(resolve, 2000));
+
 				await port.write(buildCommand(SerialCommandType.ReadConfig, 0, ""));
 
 				// Listen for response from the board
