@@ -59,8 +59,14 @@ function Connection({ setIsConnected, port }: ConnectionProps) {
 
 	const scan = useCallback(async () => {
 		const ports = await SerialPort.available_ports();
-		setAvailablePorts(Object.keys(ports));
-		return Object.keys(ports);
+
+		const isLinux = navigator.userAgent.toLowerCase().includes("linux");
+		const portNames = isLinux
+			? Object.keys(ports).filter((name) => name.includes("USB"))
+			: Object.keys(ports);
+
+		setAvailablePorts(portNames);
+		return portNames;
 	}, []);
 
 	useEffect(() => {

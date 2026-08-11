@@ -88,7 +88,7 @@ const checkConfig = (data: string) => {
 	const turnoutRegex = /<([\d,;]+)>/;
 	const match = data.match(turnoutRegex);
 	if (!match) {
-		return "Error: Invalid turnout configuration format.";
+		return `Error: Invalid turnout configuration format. Config: ${data}`;
 	}
 
 	return match[1];
