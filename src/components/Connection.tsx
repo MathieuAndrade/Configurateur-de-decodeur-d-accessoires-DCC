@@ -1,5 +1,8 @@
+import { appLogDir, join } from "@tauri-apps/api/path";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useState } from "react";
 import { SerialPort } from "tauri-plugin-serialplugin-api";
+import { logDebug, logError, logInfo, logWarn } from "../utils/logger";
 import {
 	buildCommand,
 	checkConfig,
@@ -20,41 +23,63 @@ function Connection({ setIsConnected, port }: ConnectionProps) {
 
 	const connect = useCallback(
 		async (path: string) => {
+			logInfo("connect: starting connection attempt", { path });
 			setTryingToConnect(true);
 			setConnectionError("");
 
 			try {
-				// if (port.isOpen) {
-				await port.close();
-				// }
+				try {
+					// if (port.isOpen) {
+					await port.close();
+					// }
+					logDebug("connect: closed any previously open port");
+				} catch (err) {
+					// Not fatal: the port may simply not have been open yet.
+					logDebug(
+						"connect: close before connect failed (likely not open)",
+						err,
+					);
+				}
 
 				// Update path
 				await port.change({ path });
+				logDebug("connect: port path updated", { path });
 
 				// Then open and get configuration
+				logDebug("connect: opening port", port.options);
 				await port.open();
+				logInfo("connect: port opened successfully", { path });
 
 				// Opening the serial port toggles DTR on most platforms (notably Linux),
 				// which resets Arduino-style boards. Wait for the board to finish
 				// rebooting before talking to it, otherwise the command is lost.
+				logDebug("connect: waiting for board reboot after DTR toggle (2000ms)");
 				await new Promise((resolve) => setTimeout(resolve, 2000));
 
-				await port.write(buildCommand(SerialCommandType.ReadConfig, 0, ""));
+				const command = buildCommand(SerialCommandType.ReadConfig, 0, "");
+				logDebug("connect: writing ReadConfig command", { command });
+				await port.write(command);
+				logDebug("connect: ReadConfig command written");
 
 				// Listen for response from the board
 				// And validate configuration format
 				const data = await serial_read(port);
+				logDebug("connect: raw data received from board", { raw: data });
+
 				const res = checkConfig(data);
 
 				if (res.startsWith("Error")) {
+					logWarn("connect: board response failed validation", { res });
 					setConnectionError(res);
 					setTryingToConnect(false);
 				} else {
+					logInfo("connect: connection established", { path });
 					setIsConnected(res);
 					port.stopListening();
 					setTryingToConnect(false);
 				}
 			} catch (err) {
+				logError("connect: connection error", err);
 				console.error("Connection error:", err);
 				setConnectionError(`Erreur de connexion : ${err}`);
 				setTryingToConnect(false);
@@ -64,15 +89,41 @@ function Connection({ setIsConnected, port }: ConnectionProps) {
 	);
 
 	const scan = useCallback(async () => {
-		const ports = await SerialPort.available_ports();
+		logDebug("scan: listing available serial ports");
+		let ports: Record<string, unknown>;
+		try {
+			ports = await SerialPort.available_ports();
+		} catch (err) {
+			logError("scan: failed to list serial ports", err);
+			setAvailablePorts([]);
+			return [];
+		}
 
 		const isLinux = navigator.userAgent.toLowerCase().includes("linux");
 		const portNames = isLinux
 			? Object.keys(ports).filter((name) => name.includes("USB"))
 			: Object.keys(ports);
 
+		logInfo("scan: ports found", {
+			isLinux,
+			all: Object.keys(ports),
+			kept: portNames,
+		});
+
 		setAvailablePorts(portNames);
 		return portNames;
+	}, []);
+
+	const openLogFolder = useCallback(async () => {
+		try {
+			const dir = await appLogDir();
+			const filePath = await join(dir, "connexion.log");
+			logInfo("openLogFolder: revealing log file", { filePath });
+			await revealItemInDir(filePath);
+		} catch (err) {
+			logError("openLogFolder: failed to reveal log file", err);
+			console.error("Failed to open log folder:", err);
+		}
 	}, []);
 
 	useEffect(() => {
@@ -131,6 +182,14 @@ function Connection({ setIsConnected, port }: ConnectionProps) {
 					</button>
 					<button type="button" className="small-round" onClick={scan}>
 						Scanner
+					</button>
+					<button
+						type="button"
+						className="small-round"
+						onClick={openLogFolder}
+						title="Ouvrir le fichier de logs pour diagnostiquer un problème de connexion"
+					>
+						Voir les logs
 					</button>
 				</div>
 

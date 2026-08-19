@@ -1,4 +1,5 @@
 import type { SerialPort } from "tauri-plugin-serialplugin-api";
+import { logDebug, logError, logTrace, logWarn } from "./logger";
 import {
 	type BoardSettingsType,
 	SerialCommandType,
@@ -11,6 +12,9 @@ const serial_read = async (port: SerialPort) => {
 	const startTime = Date.now();
 	const timeout = 2000;
 	let retryCount = 0;
+	let readCount = 0;
+
+	logDebug("serial_read: start", { path: port.options.path, timeout });
 
 	while (!lastCharReceived && Date.now() - startTime < timeout) {
 		let chunk = "";
@@ -20,17 +24,25 @@ const serial_read = async (port: SerialPort) => {
 		// which can happen due to timing issues with serial communication
 		// Lib tauri-plugin-serialplugin does not handle this internally
 		try {
+			readCount += 1;
 			chunk = await port.read();
 			retryCount = 0; // Reset retry count on successful read
 		} catch (err) {
 			retryCount += 1;
+			logWarn(`serial_read: read error (attempt ${retryCount}/5)`, err);
 			console.error(`Read error (attempt ${retryCount}):`, err);
 			if (retryCount >= 5) {
+				logError("serial_read: max read attempts reached, aborting");
 				console.error("Max read attempts reached. Aborting read.");
 				break;
 			}
 			continue;
 		}
+
+		logTrace(`serial_read: chunk #${readCount} received`, {
+			length: chunk.length,
+			raw: chunk,
+		});
 
 		data += chunk;
 		if (chunk.includes(">")) {
@@ -44,9 +56,18 @@ const serial_read = async (port: SerialPort) => {
 	}
 
 	if (lastCharReceived) {
+		logDebug("serial_read: success", {
+			elapsedMs: Date.now() - startTime,
+			bytes: data.length,
+		});
 		return data;
 	}
 
+	logError("serial_read: timeout without terminator '>'", {
+		elapsedMs: Date.now() - startTime,
+		bytesReceived: data.length,
+		raw: data,
+	});
 	return "Error: Timeout while reading data from serial port.";
 };
 
@@ -88,6 +109,9 @@ const checkConfig = (data: string) => {
 	const turnoutRegex = /<([\d,;]+)>/;
 	const match = data.match(turnoutRegex);
 	if (!match) {
+		logError("checkConfig: invalid turnout configuration format", {
+			raw: data,
+		});
 		return `Error: Invalid turnout configuration format. Config: ${data}`;
 	}
 

@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "serialplugin:default"
+    "serialplugin:default",
+    "log:default"
   ]
 }

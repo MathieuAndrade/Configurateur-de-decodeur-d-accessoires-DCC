@@ -4,7 +4,7 @@ import { SerialPort } from "tauri-plugin-serialplugin-api";
 import Connection from "./components/Connection";
 import Header from "./components/Header";
 import TurnoutList from "./components/TurnoutList";
-
+import { logDebug, logError, logInfo } from "./utils/logger";
 import {
 	buildCommand,
 	checkConfig,
@@ -12,7 +12,6 @@ import {
 	SerialCommandType,
 	serial_read,
 } from "./utils/serial";
-
 import type { BoardSettingsType, TurnoutType } from "./utils/utils";
 
 import "./App.css";
@@ -40,14 +39,21 @@ function App() {
 	);
 
 	const handleDisconnect = async () => {
+		logInfo("handleDisconnect: disconnecting", { path: port.options.path });
 		setIsConnected(false);
 		setSelectedPath(null);
 
 		port.stopListening();
-		port.close();
+		try {
+			await port.close();
+			logDebug("handleDisconnect: port closed");
+		} catch (error) {
+			logError("handleDisconnect: error closing port", error);
+		}
 	};
 
 	const handleConnected = (data: string) => {
+		logInfo("handleConnected: board connected", { path: port.options.path });
 		setIsConnected(true);
 		setSelectedPath(port.options.path ?? "");
 
@@ -60,8 +66,11 @@ function App() {
 		if (!isConnected) return;
 
 		try {
+			logDebug("handleSave: sending SaveConfig command");
 			await port.write(buildCommand(SerialCommandType.SaveConfig, 0, ""));
+			logDebug("handleSave: SaveConfig command sent");
 		} catch (error) {
+			logError("handleSave: error saving turnout configuration", error);
 			console.error("Error saving turnout configuration:", error);
 		}
 	};
@@ -70,6 +79,7 @@ function App() {
 		if (!isConnected) return;
 
 		try {
+			logDebug("handleReadConfig: sending ReadConfig command");
 			await port.write(buildCommand(SerialCommandType.ReadConfig, 0, ""));
 
 			// Listen for response from the board
@@ -79,7 +89,12 @@ function App() {
 			const config = parseConfig(res);
 			setTurnouts(config.turnouts);
 			setBoardSettings(config.boardSettings);
+			logDebug(
+				"handleReadConfig: configuration refreshed",
+				config.boardSettings,
+			);
 		} catch (error) {
+			logError("handleReadConfig: error reading turnout configuration", error);
 			console.error("Error reading turnout configuration:", error);
 		}
 	};
