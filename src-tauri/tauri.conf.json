@@ -13,9 +13,9 @@
 		"windows": [
 			{
 				"title": "Régleur de décodeur DCC 6 servomoteurs",
-				"width": 700,
+				"width": 900,
 				"height": 550,
-				"resizable": false,
+				"resizable": true,
 				"fullscreen": false,
 				"maximizable": false
 			}
